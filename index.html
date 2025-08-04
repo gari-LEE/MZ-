@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💰%3C/text%3E%3C/svg%3E">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>노랭이의 가계부</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Poppins', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              'neon-purple': '#8B5CF6',
+              'cyber-pink': '#EC4899',
+              'electric-blue': '#06B6D4',
+              'neon-green': '#10B981',
+              'sunset-orange': '#F59E0B',
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Poppins', sans-serif;
+        background-color: #0F172A; /* slate-900 */
+        color: #E2E8F0; /* slate-200 */
+      }
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    </style>
+    <!-- Babel for in-browser transpilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+      import React, { useState, useMemo, useCallback, useEffect } from 'https://esm.sh/react@19.1.1';
+      import ReactDOM from 'https://esm.sh/react-dom@19.1.1/client';
+      import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@3.1.0';
+
+      // --- From types.ts ---
+      const TransactionType = {
+        INCOME: 'INCOME',
+        EXPENSE: 'EXPENSE',
+      };
+
+      // --- From constants.ts ---
+      const EXPENSE_CATEGORIES = [
+        { 
+          id: 'food', 
+          name: '식비', 
+          emoji: '🍔', 
+          color: '#F59E0B',
+          subcategories: [
+            { id: 'breakfast', name: '아침' },
+            { id: 'lunch', name: '점심' },
+            { id: 'dinner', name: '저녁' },
+            { id: 'late_snack', name: '야식' },
+          ]
+        },
+        { 
+          id: 'transport', 
+          name: '교통비', 
+          emoji: '🚌', 
+          color: '#06B6D4',
+          subcategories: [
+            { id: 'bus', name: '버스' },
+            { id: 'subway', name: '지하철' },
+            { id: 'taxi', name: '택시' },
+          ]
+        },
+        { id: 'shopping', name: '쇼핑', emoji: '🛍️', color: '#EC4899' },
+        { id: 'medical', name: '의료비', emoji: '💊', color: '#EF4444' },
+        { id: 'utilities', name: '공과금', emoji: '🧾', color: '#6366F1' },
+        { id: 'education', name: '교육비', emoji: '🎓', color: '#8B5CF6' },
+        { id: 'culture', name: '문화생활', emoji: '🎬', color: '#D946EF' },
+        { id: 'other_expense', name: '기타', emoji: '💸', color: '#6B7280' },
+      ];
+
+      const INCOME_CATEGORIES = [
+        { id: 'salary', name: '급여', emoji: '💼', color: '#10B981' },
+        { id: 'allowance', name: '용돈', emoji: '🪙', color: '#22C55E' },
+        { id: 'side_hustle', name: '부업', emoji: '💻', color: '#84CC16' },
+        { id: 'investment', name: '투자수익', emoji: '📈', color: '#3B82F6' },
+        { id: 'other_income', name: '기타', emoji: '💰', color: '#A855F7' },
+      ];
+
+      const ALL_CATEGORIES = [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES];
+      const CATEGORY_MAP = new Map(ALL_CATEGORIES.map(cat => [cat.id, cat]));
+      const subcategoryList = [];
+      EXPENSE_CATEGORIES.forEach(cat => {
+          if (cat.subcategories) {
+              cat.subcategories.forEach(sub => {
+                  subcategoryList.push([sub.id, sub]);
+              });
+          }
+      });
+      const SUBCATEGORY_MAP = new Map(subcategoryList);
+
+      // --- From hooks/useTransactions.ts ---
+      const useLocalStorage = (key, initialValue) => {
+        const [storedValue, setStoredValue] = useState(() => {
+          try {
+            const item = window.localStorage.getItem(key);
+            return item ? JSON.parse(item) : initialValue;
+          } catch (error) {
+            console.error(error);
+            return initialValue;
+          }
+        });
+
+        const setValue = (value) => {
+          try {
+            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            setStoredValue(valueToStore);
+            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+          } catch (error) {
+            console.error(error);
+          }
+        };
+
+        return [storedValue, setValue];
+      };
+
+      const useTransactions = () => {
+        const [transactions, setTransactions] = useLocalStorage('transactions', []);
+
+        const addTransaction = useCallback((transaction) => {
+          const newTransaction = { ...transaction, id: new Date().toISOString() + Math.random() };
+          setTransactions(prev => [...prev, newTransaction]);
+        }, [setTransactions]);
+
+        const updateTransaction = useCallback((updatedTransaction) => {
+          setTransactions(prev => prev.map(t => t.id === updatedTransaction.id ? updatedTransaction : t));
+        }, [setTransactions]);
+
+        const deleteTransaction = useCallback((id) => {
+          setTransactions(prev => prev.filter(t => t.id !== id));
+        }, [setTransactions]);
+
+        const sortedTransactions = useMemo(() => {
+          return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        }, [transactions]);
+
+        const getFilteredTransactions = useCallback((month) => {
+          if (!month) return sortedTransactions;
+          return sortedTransactions.filter(t => t.date.startsWith(month));
+        }, [sortedTransactions]);
+
+        const totals = useMemo(() => {
+          return (month) => {
+              const filtered = getFilteredTransactions(month);
+              return filtered.reduce((acc, t) => {
+                  if (t.type === TransactionType.INCOME) {
+                      acc.income += t.amount;
+                  } else {
+                      acc.expense += t.amount;
+                  }
+                  acc.balance = acc.income - acc.expense;
+                  return acc;
+              }, { income: 0, expense: 0, balance: 0 });
+          };
+        }, [getFilteredTransactions]);
+
+        const expenseByCategory = useMemo(() => {
+          return (month) => {
+            const filtered = getFilteredTransactions(month).filter(t => t.type === TransactionType.EXPENSE);
+            const categoryTotals = {};
+            for (const t of filtered) {
+              if (!categoryTotals[t.categoryId]) {
+                categoryTotals[t.categoryId] = 0;
+              }
+              categoryTotals[t.categoryId] += t.amount;
+            }
+            return Object.entries(categoryTotals).map(([categoryId, amount]) => ({
+              categoryId,
+              amount,
+            }));
+          }
+        }, [getFilteredTransactions]);
+
+        const importTransactions = (newTransactions) => {
+          if (Array.isArray(newTransactions)) {
+              const validTransactions = newTransactions.filter(t => t.id && t.amount && t.date && t.type && t.categoryId);
+              setTransactions(validTransactions);
+              alert(`${validTransactions.length}개의 거래 내역을 가져왔습니다.`);
+          } else {
+              alert('유효하지 않은 파일 형식입니다.');
+          }
+        };
+
+
+        return { 
+          transactions: transactions, // for export
+          getFilteredTransactions,
+          addTransaction, 
+          updateTransaction, 
+          deleteTransaction, 
+          totals,
+          expenseByCategory,
+          importTransactions,
+        };
+      };
+
+      // --- From components/ui/Icons.tsx ---
+      const PlusIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+      );
+      const EditIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
+        </svg>
+      );
+      const TrashIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      );
+      const XIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      );
+      const UploadIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+        </svg>
+      );
+      const DownloadIcon = () => (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+      );
+
+      // --- From components/Dashboard.tsx ---
+      const StatCard = ({ title, amount, color }) => (
+        <div className={`p-4 rounded-xl bg-slate-800/50 border border-slate-700 shadow-lg backdrop-blur-sm`}>
+          <h3 className="text-sm text-slate-400">{title}</h3>
+          <p className={`font-mono text-2xl font-bold ${color}`}>
+            {amount.toLocaleString()}원
+          </p>
+        </div>
+      );
+
+      const Dashboard = ({ totals, expenseData }) => {
+        const chartData = expenseData.map(item => ({
+          name: CATEGORY_MAP.get(item.categoryId)?.name || '기타',
+          value: item.amount,
+          color: CATEGORY_MAP.get(item.categoryId)?.color || '#6B7280',
+        }));
+
+        return (
+          <section className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1 grid grid-rows-3 gap-4">
+              <StatCard title="총 수입" amount={totals.income} color="text-neon-green" />
+              <StatCard title="총 지출" amount={totals.expense} color="text-sunset-orange" />
+              <StatCard title="잔액" amount={totals.balance} color={totals.balance >= 0 ? 'text-electric-blue' : 'text-cyber-pink'} />
+            </div>
+
+            <div className="md:col-span-2 p-4 rounded-xl bg-slate-800/50 border border-slate-700 shadow-lg backdrop-blur-sm min-h-[280px]">
+              <h3 className="text-lg font-bold mb-2 text-slate-200">카테고리별 지출</h3>
+              {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Tooltip
+                      cursor={{ fill: 'rgba(255, 255, 255, 0.1)' }}
+                      contentStyle={{
+                        background: 'rgba(30, 41, 59, 0.8)',
+                        borderColor: '#475569',
+                        borderRadius: '0.5rem',
+                        color: '#e2e8f0',
+                      }}
+                    />
+                    <Pie
+                      data={chartData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      fill="#8884d8"
+                      labelLine={false}
+                      label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                        const RADIAN = Math.PI / 180;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 1.2;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        return (
+                          <text x={x} y={y} fill={chartData[index].color} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="12">
+                            {`${(percent * 100).toFixed(0)}%`}
+                          </text>
+                        );
+                      }}
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-500">
+                  해당 월의 지출 내역이 없습니다.
+                </div>
+              )}
+            </div>
+          </section>
+        );
+      };
+      
+      // --- From components/TransactionList.tsx ---
+      const TransactionItem = ({ transaction, onEdit, onDelete }) => {
+        const category = CATEGORY_MAP.get(transaction.categoryId);
+        const subCategory = transaction.subCategoryId ? SUBCATEGORY_MAP.get(transaction.subCategoryId) : null;
+        const amountColor = transaction.type === TransactionType.INCOME ? 'text-neon-green' : 'text-white';
+        const amountPrefix = transaction.type === TransactionType.INCOME ? '+' : '-';
+
+        return (
+          <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 flex items-center space-x-4 transition-all duration-300 hover:bg-slate-700/50 hover:shadow-lg hover:shadow-neon-purple/10">
+            <div className="flex-shrink-0 w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-2xl">
+              {category?.emoji}
+            </div>
+            <div className="flex-grow">
+              <div className="flex justify-between items-start">
+                  <p className="font-bold text-slate-200 truncate">
+                    {category?.name}
+                    {subCategory && (
+                      <span className="text-sm font-medium text-slate-400 ml-2">
+                        · {subCategory.name}
+                      </span>
+                    )}
+                  </p>
+                <p className={`font-mono font-bold text-lg ${amountColor}`}>
+                  {amountPrefix}{transaction.amount.toLocaleString()}원
+                </p>
+              </div>
+              <div className="flex justify-between items-end mt-1">
+                <p className="text-sm text-slate-400 truncate pr-4" title={transaction.memo}>{transaction.memo || '메모 없음'}</p>
+                <p className="text-xs text-slate-500 font-mono flex-shrink-0">{transaction.date}</p>
+              </div>
+            </div>
+            <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2">
+              <button onClick={() => onEdit(transaction)} className="p-2 text-slate-400 hover:text-electric-blue transition-colors">
+                <EditIcon />
+              </button>
+              <button onClick={() => onDelete(transaction.id)} className="p-2 text-slate-400 hover:text-cyber-pink transition-colors">
+                <TrashIcon />
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const TransactionList = ({ transactions, onEdit, onDelete }) => {
+        return (
+          <section>
+            <h2 className="text-xl font-bold mb-4 text-slate-200">최근 거래 내역</h2>
+            <div className="space-y-3">
+              {transactions.length > 0 ? (
+                transactions.map(t => (
+                  <TransactionItem key={t.id} transaction={t} onEdit={onEdit} onDelete={onDelete} />
+                ))
+              ) : (
+                <div className="text-center py-10 bg-slate-800/50 border border-dashed border-slate-700 rounded-lg">
+                  <p className="text-slate-500">거래 내역이 없습니다.</p>
+                  <p className="text-slate-600 text-sm mt-1">하단의 '+' 버튼을 눌러 추가해보세요.</p>
+                </div>
+              )}
+            </div>
+          </section>
+        );
+      };
+
+      // --- From components/TransactionModal.tsx ---
+      const TransactionModal = ({ isOpen, onClose, onSave, transaction }) => {
+        const [type, setType] = useState(TransactionType.EXPENSE);
+        const [amount, setAmount] = useState('');
+        const [categoryId, setCategoryId] = useState('');
+        const [subCategoryId, setSubCategoryId] = useState(undefined);
+        const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+        const [memo, setMemo] = useState('');
+
+        useEffect(() => {
+          if (transaction) {
+            setType(transaction.type);
+            setAmount(String(transaction.amount));
+            setCategoryId(transaction.categoryId);
+            setSubCategoryId(transaction.subCategoryId);
+            setDate(transaction.date);
+            setMemo(transaction.memo);
+          } else {
+            // Reset form for new transaction
+            setType(TransactionType.EXPENSE);
+            setAmount('');
+            setCategoryId(EXPENSE_CATEGORIES[0]?.id || '');
+            setSubCategoryId(undefined);
+            setDate(new Date().toISOString().slice(0, 10));
+            setMemo('');
+          }
+        }, [transaction, isOpen]);
+        
+        useEffect(() => {
+          if (type === TransactionType.EXPENSE) {
+              setCategoryId(EXPENSE_CATEGORIES[0]?.id || '');
+          } else {
+              setCategoryId(INCOME_CATEGORIES[0]?.id || '');
+          }
+          setSubCategoryId(undefined);
+        }, [type]);
+
+        if (!isOpen) return null;
+        
+        const handleCategoryClick = (id) => {
+          setCategoryId(id);
+          setSubCategoryId(undefined);
+        };
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          if (!amount || !categoryId || !date) {
+            alert('모든 필수 항목을 입력해주세요.');
+            return;
+          }
+          const transactionData = {
+            date,
+            amount: Number(amount),
+            type,
+            categoryId,
+            subCategoryId,
+            memo,
+          };
+          
+          if (transaction) {
+            onSave({ ...transactionData, id: transaction.id });
+          } else {
+            onSave(transactionData);
+          }
+        };
+
+        const categories = type === TransactionType.EXPENSE ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+        const selectedCategory = categories.find(c => c.id === categoryId);
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+            <div className="w-full max-w-md bg-slate-800/80 border border-slate-700 rounded-2xl shadow-2xl shadow-neon-purple/20 p-6 relative" onClick={e => e.stopPropagation()}>
+              <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
+                <XIcon />
+              </button>
+              <h2 className="text-2xl font-bold mb-6 text-center text-transparent bg-clip-text bg-gradient-to-r from-cyber-pink to-electric-blue">
+                {transaction ? '거래 수정' : '거래 추가'}
+              </h2>
+              
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <button type="button" onClick={() => setType(TransactionType.EXPENSE)} className={`w-full py-3 rounded-lg font-bold transition-all ${type === TransactionType.EXPENSE ? 'bg-cyber-pink text-white shadow-lg shadow-cyber-pink/20' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>지출</button>
+                  <button type="button" onClick={() => setType(TransactionType.INCOME)} className={`w-full py-3 rounded-lg font-bold transition-all ${type === TransactionType.INCOME ? 'bg-neon-green text-white shadow-lg shadow-neon-green/20' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>수입</button>
+                </div>
+
+                <div>
+                  <label htmlFor="amount" className="block text-sm font-medium text-slate-400 mb-1">금액</label>
+                  <input type="number" id="amount" value={amount} onChange={(e) => setAmount(e.target.value)} required className="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-neon-purple font-mono text-lg" placeholder="0" />
+                </div>
+
+                <div>
+                  <label htmlFor="category" className="block text-sm font-medium text-slate-400 mb-1">카테고리</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {categories.map(cat => (
+                      <button type="button" key={cat.id} onClick={() => handleCategoryClick(cat.id)} className={`flex flex-col items-center p-2 rounded-lg transition-all border-2 ${categoryId === cat.id ? 'border-neon-purple bg-neon-purple/20' : 'border-transparent bg-slate-700 hover:bg-slate-600'}`}>
+                        <span className="text-2xl">{cat.emoji}</span>
+                        <span className="text-xs mt-1 text-slate-300">{cat.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {selectedCategory?.subcategories && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-1">세부 항목</label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedCategory.subcategories.map(subCat => (
+                        <button type="button" key={subCat.id} onClick={() => setSubCategoryId(subCat.id)} className={`py-1 px-3 rounded-full text-sm transition-all ${subCategoryId === subCat.id ? 'bg-neon-purple text-white font-bold' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
+                          {subCat.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <div>
+                  <label htmlFor="date" className="block text-sm font-medium text-slate-400 mb-1">날짜</label>
+                  <input type="date" id="date" value={date} onChange={(e) => setDate(e.target.value)} required className="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-neon-purple" />
+                </div>
+
+                <div>
+                  <label htmlFor="memo" className="block text-sm font-medium text-slate-400 mb-1">메모</label>
+                  <input type="text" id="memo" value={memo} onChange={(e) => setMemo(e.target.value)} className="w-full bg-slate-900/70 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-neon-purple" placeholder="간단한 메모 (선택)" />
+                </div>
+                
+                <button type="submit" className="w-full py-3 mt-4 font-bold text-white rounded-lg bg-gradient-to-r from-neon-purple to-cyber-pink hover:opacity-90 transition-opacity shadow-lg shadow-neon-purple/30">
+                  저장하기
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      };
+
+      // --- From App.tsx ---
+      const App = () => {
+        const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
+        const { 
+          transactions, 
+          getFilteredTransactions,
+          deleteTransaction,
+          addTransaction,
+          updateTransaction,
+          totals, 
+          expenseByCategory,
+          importTransactions,
+        } = useTransactions();
+
+        const [isModalOpen, setIsModalOpen] = useState(false);
+        const [editingTransaction, setEditingTransaction] = useState(null);
+
+        const filteredTransactions = useMemo(() => getFilteredTransactions(currentMonth), [getFilteredTransactions, currentMonth]);
+        const currentTotals = useMemo(() => totals(currentMonth), [totals, currentMonth]);
+        const currentExpenseByCategory = useMemo(() => expenseByCategory(currentMonth), [expenseByCategory, currentMonth]);
+
+        const handleOpenModal = (transaction = null) => {
+          setEditingTransaction(transaction);
+          setIsModalOpen(true);
+        };
+
+        const handleCloseModal = () => {
+          setIsModalOpen(false);
+          setEditingTransaction(null);
+        };
+
+        const handleSaveTransaction = (transactionData) => {
+          if ('id' in transactionData) {
+            updateTransaction(transactionData);
+          } else {
+            addTransaction(transactionData);
+          }
+          handleCloseModal();
+        };
+
+        const handleExport = () => {
+          const dataStr = JSON.stringify(transactions, null, 2);
+          const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+          const exportFileDefaultName = `transactions_${new Date().toISOString().slice(0,10)}.json`;
+          const linkElement = document.createElement('a');
+          linkElement.setAttribute('href', dataUri);
+          linkElement.setAttribute('download', exportFileDefaultName);
+          linkElement.click();
+        };
+        
+        const handleImport = (event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              try {
+                const content = e.target?.result;
+                if (typeof content === 'string') {
+                  const importedData = JSON.parse(content);
+                  importTransactions(importedData);
+                }
+              } catch (error) {
+                console.error("Error parsing JSON file:", error);
+                alert('파일을 읽는 중 오류가 발생했습니다.');
+              }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // Reset file input
+          }
+        };
+
+        return (
+          <div className="min-h-screen bg-slate-900 text-slate-200 font-sans">
+            <div className="fixed top-0 left-0 w-full h-full bg-gradient-to-br from-neon-purple/30 via-cyber-pink/30 to-electric-blue/30 blur-3xl opacity-50 z-0"></div>
+            <main className="relative z-10 container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl">
+              <header className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyber-pink to-electric-blue">
+                  노랭이의 가계부
+                </h1>
+                <div className="flex items-center space-x-2">
+                  <input 
+                    type="month"
+                    value={currentMonth}
+                    onChange={(e) => setCurrentMonth(e.target.value)}
+                    className="bg-slate-800/80 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyber-pink"
+                  />
+                  <label htmlFor="import-button" className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md cursor-pointer transition-colors">
+                    <UploadIcon />
+                    <input type="file" id="import-button" className="hidden" accept=".json" onChange={handleImport} />
+                  </label>
+                  <button onClick={handleExport} className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md transition-colors">
+                    <DownloadIcon />
+                  </button>
+                </div>
+              </header>
+
+              <Dashboard totals={currentTotals} expenseData={currentExpenseByCategory} />
+
+              <TransactionList 
+                transactions={filteredTransactions} 
+                onEdit={handleOpenModal}
+                onDelete={deleteTransaction} 
+              />
+            </main>
+
+            <button
+              onClick={() => handleOpenModal()}
+              className="fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-br from-neon-purple to-cyber-pink rounded-full flex items-center justify-center text-white shadow-lg shadow-neon-purple/30 hover:scale-110 transition-transform duration-300"
+              aria-label="Add Transaction"
+            >
+              <PlusIcon />
+            </button>
+
+            {isModalOpen && (
+              <TransactionModal 
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                onSave={handleSaveTransaction}
+                transaction={editingTransaction}
+              />
+            )}
+          </div>
+        );
+      };
+
+      // --- From index.tsx ---
+      const rootElement = document.getElementById('root');
+      if (!rootElement) {
+        throw new Error("Could not find root element to mount to");
+      }
+
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(<App />);
+
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
