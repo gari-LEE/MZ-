@@ -792,8 +792,9 @@
           setAnalysisState({ isOpen: true, isLoading: true, content: '', error: null });
         
           try {
-            if (!process.env.API_KEY) {
-              throw new Error('API 키가 설정되지 않았습니다.');
+            // Check for API Key availability in a way that's safe for browser environments
+            if (typeof process === 'undefined' || typeof process.env === 'undefined' || !process.env.API_KEY) {
+              throw new Error('AI 기능을 사용하려면 API 키가 필요하지만, 현재 찾을 수 없습니다. 이 기능은 API 키가 제공되는 공식 개발 환경에서만 작동합니다.');
             }
             
             const monthlyExpenses = getExpensesByMonth(currentMonth);
@@ -802,7 +803,7 @@
               throw new Error('분석할 지출 내역이 없습니다. 먼저 거래를 추가해주세요.');
             }
         
-            const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+            const ai = new GoogleGenAI({apiKey:AIzaSyDnU8dny7n6MXmsuJVGgPHI26y-oqgh8_Q});
             
             const expenseDetails = monthlyExpenses.map(t => {
                 const category = CATEGORY_MAP.get(t.categoryId)?.name || '기타';
