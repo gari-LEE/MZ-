@@ -788,22 +788,26 @@
         };
 
         const handleAnalyze = async () => {
-          // Immediately set loading state to provide user feedback
           setAnalysisState({ isOpen: true, isLoading: true, content: '', error: null });
         
           try {
-            // Check for API Key availability in a way that's safe for browser environments
-            if (typeof process === 'undefined' || typeof process.env === 'undefined' || !process.env.API_KEY) {
-              throw new Error('AI 기능을 사용하려면 API 키가 필요하지만, 현재 찾을 수 없습니다. 이 기능은 API 키가 제공되는 공식 개발 환경에서만 작동합니다.');
+            // --- 🚨 중요 보안 경고 🚨 ---
+            // 이 파일이 인터넷에 공개되면 API 키가 노출되어 다른 사람이 악용할 수 있습니다.
+            // 이는 매우 위험하며, 예상치 못한 요금이 청구될 수 있습니다.
+            // 이 방법은 반드시 컴퓨터에서 개인적인 용도로만 사용하세요.
+            const YOUR_API_KEY = "AIzaSyDnU8dny7n6MXmsuJVGgPHI26y-oqgh8_Q"; // <-- ❗ 이 곳에 발급받은 API 키를 붙여넣으세요.
+        
+            if (!YOUR_API_KEY || YOUR_API_KEY === "여기에_발급받은_API_키를_붙여넣으세요") {
+              throw new Error("API 키가 코드에 입력되지 않았습니다. index.html 파일의 handleAnalyze 함수 안에 있는 YOUR_API_KEY 변수에 키를 넣어주세요.");
             }
             
             const monthlyExpenses = getExpensesByMonth(currentMonth);
         
-            if (monthlyExpenses.length === 0) {
-              throw new Error('분석할 지출 내역이 없습니다. 먼저 거래를 추가해주세요.');
+            if (monthlyExpenses.length < 2) {
+              throw new Error('분석할 지출 내역이 부족합니다. 최소 2개 이상의 거래를 추가해주세요.');
             }
         
-            const ai = new GoogleGenAI({apiKey: 'AIzaSyDnU8dny7n6MXmsuJVGgPHI26y-oqgh8_Q'});
+            const ai = new GoogleGenAI({apiKey: YOUR_API_KEY});
             
             const expenseDetails = monthlyExpenses.map(t => {
                 const category = CATEGORY_MAP.get(t.categoryId)?.name || '기타';
