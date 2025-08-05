@@ -41,6 +41,18 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
       }
+       @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .spinner {
+        border: 4px solid rgba(255, 255, 255, 0.2);
+        border-left-color: #EC4899;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+      }
     </style>
     <!-- Babel for in-browser transpilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -51,6 +63,8 @@
       import React, { useState, useMemo, useCallback, useEffect } from 'https://esm.sh/react@19.1.1';
       import ReactDOM from 'https://esm.sh/react-dom@19.1.1/client';
       import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@3.1.0';
+      import { GoogleGenAI } from 'https://esm.sh/@google/genai';
+
 
       // --- From types.ts ---
       const TransactionType = {
@@ -111,7 +125,7 @@
       });
       const SUBCATEGORY_MAP = new Map(subcategoryList);
 
-      // --- From hooks/useTransactions.ts ---
+      // --- From hooks/useLocalStorage.ts (combined) ---
       const useLocalStorage = (key, initialValue) => {
         const [storedValue, setStoredValue] = useState(() => {
           try {
@@ -135,6 +149,30 @@
 
         return [storedValue, setValue];
       };
+      
+      const useReports = () => {
+        const [reports, setReports] = useLocalStorage('ai_reports', []);
+
+        const addReport = useCallback((reportContent, reportMonth) => {
+            const newReport = {
+                id: new Date().toISOString() + Math.random(),
+                date: new Date().toISOString().slice(0, 10),
+                month: reportMonth,
+                content: reportContent
+            };
+            setReports(prev => [newReport, ...prev]);
+        }, [setReports]);
+
+        const deleteReport = useCallback((id) => {
+            setReports(prev => prev.filter(r => r.id !== id));
+        }, [setReports]);
+        
+        const sortedReports = useMemo(() => {
+          return [...reports].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        }, [reports]);
+
+        return { reports: sortedReports, addReport, deleteReport };
+    };
 
       const useTransactions = () => {
         const [transactions, setTransactions] = useLocalStorage('transactions', []);
@@ -160,6 +198,10 @@
           if (!month) return sortedTransactions;
           return sortedTransactions.filter(t => t.date.startsWith(month));
         }, [sortedTransactions]);
+        
+        const getExpensesByMonth = useCallback((month) => {
+            return getFilteredTransactions(month).filter(t => t.type === TransactionType.EXPENSE);
+        }, [getFilteredTransactions]);
 
         const totals = useMemo(() => {
           return (month) => {
@@ -207,6 +249,7 @@
         return { 
           transactions: transactions, // for export
           getFilteredTransactions,
+          getExpensesByMonth,
           addTransaction, 
           updateTransaction, 
           deleteTransaction, 
@@ -220,6 +263,11 @@
       const PlusIcon = () => (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+      );
+      const PlusIconSmall = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
         </svg>
       );
       const EditIcon = () => (
@@ -252,13 +300,21 @@
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         </svg>
       );
-      const SettingsIcon = () => (
+      const DocumentTextIcon = () => (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       );
-
+      const SparklesIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+        </svg>
+      );
+      const ChevronDownIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      );
 
       // --- From components/Dashboard.tsx ---
       const StatCard = ({ title, amount, color }) => (
@@ -533,13 +589,128 @@
           </div>
         );
       };
+      
+      const AnalysisModal = ({ isOpen, isLoading, content, error, onClose, onSaveReport }) => {
+        if (!isOpen) return null;
+
+        const renderContent = () => {
+            if (isLoading) {
+                return (
+                    <div className="flex flex-col items-center justify-center">
+                        <div className="spinner"></div>
+                        <p className="mt-4 text-slate-300">AI가 지출 내역을 분석 중입니다...</p>
+                    </div>
+                );
+            }
+            if (error) {
+                return <p className="text-center text-cyber-pink">{error}</p>;
+            }
+            if (content) {
+                // Simple markdown-like rendering for newlines and list items
+                return content.split('\n').map((line, index) => {
+                    line = line.trim();
+                    if (line.startsWith('* ') || line.startsWith('- ')) {
+                        return <p key={index} className="mb-2 pl-4"><span className="mr-2">✨</span>{line.substring(2)}</p>;
+                    }
+                    if (line.startsWith('#')) {
+                       return <h3 key={index} className="text-lg font-bold mt-4 mb-2 text-electric-blue">{line.replace(/#/g, '').trim()}</h3>
+                    }
+                    return <p key={index} className="mb-4">{line}</p>;
+                });
+            }
+            return <p className="text-center text-slate-500">분석할 내용이 없습니다.</p>;
+        };
+
+        return (
+            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+                <div className="w-full max-w-lg bg-slate-800/80 border border-slate-700 rounded-2xl shadow-2xl shadow-electric-blue/20 p-6 relative" onClick={e => e.stopPropagation()}>
+                    <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
+                        <XIcon />
+                    </button>
+                    <h2 className="text-2xl font-bold mb-6 text-center text-transparent bg-clip-text bg-gradient-to-r from-electric-blue to-neon-green">
+                        AI 지출 분석 리포트
+                    </h2>
+                    <div className="bg-slate-900/50 rounded-lg p-4 min-h-[150px] max-h-[60vh] overflow-y-auto hide-scrollbar text-slate-300 leading-relaxed">
+                        {renderContent()}
+                    </div>
+                    <div className="flex items-center gap-4 mt-6">
+                        <button onClick={onClose} className="w-full py-2 font-bold text-slate-300 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">
+                            닫기
+                        </button>
+                        {content && !isLoading && !error && (
+                            <button onClick={onSaveReport} className="w-full py-2 font-bold text-white rounded-lg bg-gradient-to-r from-neon-purple to-cyber-pink hover:opacity-90 transition-opacity">
+                                리포트 저장
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+    
+      const ReportItem = ({ report, onDelete }) => {
+        const [isExpanded, setIsExpanded] = useState(false);
+
+        return (
+            <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 transition-all duration-300">
+                <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+                    <div>
+                        <p className="font-bold text-slate-200">{report.month}월 지출 분석 리포트</p>
+                        <p className="text-xs text-slate-500 font-mono">생성일: {report.date}</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(report.id); }} className="p-2 text-slate-500 hover:text-cyber-pink transition-colors">
+                           <TrashIcon />
+                        </button>
+                        <div className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                            <ChevronDownIcon />
+                        </div>
+                    </div>
+                </div>
+                {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-slate-700 text-slate-300 leading-relaxed">
+                        {report.content.split('\n').map((line, index) => {
+                             line = line.trim();
+                             if (line.startsWith('* ') || line.startsWith('- ')) {
+                                 return <p key={index} className="mb-2 pl-4"><span className="mr-2">✨</span>{line.substring(2)}</p>;
+                             }
+                             if (line.startsWith('#')) {
+                                return <h3 key={index} className="text-lg font-bold mt-4 mb-2 text-electric-blue">{line.replace(/#/g, '').trim()}</h3>
+                             }
+                             return <p key={index} className="mb-4">{line}</p>;
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const ReportsView = ({ reports, onDeleteReport }) => (
+        <section>
+            <h2 className="text-xl font-bold mb-4 text-slate-200">AI 리포트 보관함</h2>
+            <div className="space-y-3">
+                {reports.length > 0 ? (
+                    reports.map(r => <ReportItem key={r.id} report={r} onDelete={onDeleteReport} />)
+                ) : (
+                    <div className="text-center py-10 bg-slate-800/50 border border-dashed border-slate-700 rounded-lg">
+                        <p className="text-slate-500">저장된 리포트가 없습니다.</p>
+                        <p className="text-slate-600 text-sm mt-1">AI 분석 후 리포트를 저장해보세요.</p>
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+
 
       // --- From App.tsx ---
       const App = () => {
         const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
+        const [activeView, setActiveView] = useState('dashboard');
+        
         const { 
           transactions, 
           getFilteredTransactions,
+          getExpensesByMonth,
           deleteTransaction,
           addTransaction,
           updateTransaction,
@@ -547,9 +718,12 @@
           expenseByCategory,
           importTransactions,
         } = useTransactions();
+        
+        const { reports, addReport, deleteReport: deleteReportFromList } = useReports();
 
         const [isModalOpen, setIsModalOpen] = useState(false);
         const [editingTransaction, setEditingTransaction] = useState(null);
+        const [analysisState, setAnalysisState] = useState({ isOpen: false, isLoading: false, content: '', error: null });
 
         const filteredTransactions = useMemo(() => getFilteredTransactions(currentMonth), [getFilteredTransactions, currentMonth]);
         const currentTotals = useMemo(() => totals(currentMonth), [totals, currentMonth]);
@@ -572,6 +746,14 @@
             addTransaction(transactionData);
           }
           handleCloseModal();
+        };
+        
+        const handleSaveReport = () => {
+            if (analysisState.content && !analysisState.error) {
+                addReport(analysisState.content, currentMonth);
+                setAnalysisState({ isOpen: false, isLoading: false, content: '', error: null });
+                alert('리포트가 성공적으로 저장되었습니다!');
+            }
         };
 
         const handleExport = () => {
@@ -605,6 +787,53 @@
           }
         };
 
+        const handleAnalyze = async () => {
+          if (!process.env.API_KEY) {
+            setAnalysisState({ isOpen: true, isLoading: false, content: '', error: 'API 키가 설정되지 않았습니다.' });
+            return;
+          }
+          
+          const monthlyExpenses = getExpensesByMonth(currentMonth);
+
+          if (monthlyExpenses.length === 0) {
+            setAnalysisState({ isOpen: true, isLoading: false, content: '', error: '분석할 지출 내역이 없습니다. 먼저 거래를 추가해주세요.' });
+            return;
+          }
+
+          setAnalysisState({ isOpen: true, isLoading: true, content: '', error: null });
+
+          try {
+            const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+            
+            const expenseDetails = monthlyExpenses.map(t => {
+                const category = CATEGORY_MAP.get(t.categoryId)?.name || '기타';
+                const subCategory = t.subCategoryId ? ` (${SUBCATEGORY_MAP.get(t.subCategoryId)?.name})` : '';
+                return `- 카테고리: ${category}${subCategory}, 금액: ${t.amount.toLocaleString()}원, 메모: ${t.memo || '없음'}`;
+            }).join('\n');
+
+            const prompt = `당신은 "노랭이"라는 이름의 친절하고 현대적인 금융 코치입니다. 사용자는 젊은 세대이며, 비판적이지 않고 실용적인 조언을 원합니다. 다음은 이번 달 지출 내역입니다. 이 소비 패턴을 분석하고, 격려하는 말투와 이모티콘을 사용하여 2~3가지 구체적이고 실천 가능한 팁을 한국어로 제공해주세요. 분석 내용은 간결하고 이해하기 쉽게, 제목과 내용을 구분하여 마크다운 형식으로 작성해주세요.\n\n### 지출 요약\n\n### 개선 제안\n\n지출 내역:\n${expenseDetails}\n\n분석 리포트:`;
+            
+            const response = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: prompt,
+            });
+
+            setAnalysisState({ isOpen: true, isLoading: false, content: response.text, error: null });
+
+          } catch (e) {
+            console.error(e);
+            setAnalysisState({ isOpen: true, isLoading: false, content: '', error: 'AI 분석 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' });
+          }
+        };
+        
+        const NavButton = ({ label, icon, isActive, onClick }) => (
+            <button onClick={onClick} className={`flex flex-col items-center justify-center w-1/4 p-1 transition-colors ${isActive ? 'text-electric-blue' : 'text-slate-400 hover:text-white'}`} aria-label={label}>
+              {icon}
+              <span className="text-[10px] mt-1 font-bold">{label}</span>
+            </button>
+        );
+
+
         return (
           <div className="min-h-screen bg-slate-900 text-slate-200 font-sans">
             <div className="fixed top-0 left-0 w-full h-full bg-gradient-to-br from-neon-purple/30 via-cyber-pink/30 to-electric-blue/30 blur-3xl opacity-50 z-0"></div>
@@ -620,44 +849,39 @@
                     onChange={(e) => setCurrentMonth(e.target.value)}
                     className="bg-slate-800/80 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyber-pink"
                   />
-                  <label htmlFor="import-button" className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md cursor-pointer transition-colors">
+                  <button onClick={handleAnalyze} className="hidden md:inline-flex items-center justify-center p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md transition-colors" title="AI 지출 분석">
+                    <SparklesIcon />
+                  </button>
+                  <label htmlFor="import-button" className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md cursor-pointer transition-colors hidden md:inline-flex" title="가져오기">
                     <UploadIcon />
                     <input type="file" id="import-button" className="hidden" accept=".json" onChange={handleImport} />
                   </label>
-                  <button onClick={handleExport} className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md transition-colors">
+                  <button onClick={handleExport} className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md hidden md:inline-flex transition-colors" title="내보내기">
                     <DownloadIcon />
                   </button>
                 </div>
               </header>
 
-              <Dashboard totals={currentTotals} expenseData={currentExpenseByCategory} />
-
-              <TransactionList 
-                transactions={filteredTransactions} 
-                onEdit={handleOpenModal}
-                onDelete={deleteTransaction} 
-              />
+              {activeView === 'dashboard' ? (
+                <>
+                    <Dashboard totals={currentTotals} expenseData={currentExpenseByCategory} />
+                    <TransactionList 
+                        transactions={filteredTransactions} 
+                        onEdit={handleOpenModal}
+                        onDelete={deleteTransaction} 
+                    />
+                </>
+              ) : (
+                <ReportsView reports={reports} onDeleteReport={deleteReportFromList} />
+              )}
             </main>
 
             {/* Bottom Navigation for Mobile */}
             <footer className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900/80 backdrop-blur-sm border-t border-slate-700 z-20 flex justify-around items-center">
-              <button disabled className="flex flex-col items-center text-slate-600 p-2 cursor-not-allowed" aria-label="홈">
-                <HomeIcon />
-                <span className="text-[10px] mt-1">홈</span>
-              </button>
-              
-              <button
-                onClick={() => handleOpenModal()}
-                className="w-16 h-16 bg-gradient-to-br from-neon-purple to-cyber-pink rounded-full flex items-center justify-center text-white shadow-lg shadow-neon-purple/40 hover:scale-105 active:scale-100 transition-transform duration-200 transform -translate-y-5"
-                aria-label="거래 추가"
-              >
-                <PlusIcon />
-              </button>
-              
-              <button disabled className="flex flex-col items-center text-slate-600 p-2 cursor-not-allowed" aria-label="설정">
-                <SettingsIcon />
-                <span className="text-[10px] mt-1">설정</span>
-              </button>
+              <NavButton label="대시보드" icon={<HomeIcon/>} isActive={activeView==='dashboard'} onClick={()=> setActiveView('dashboard')} />
+              <NavButton label="리포트" icon={<DocumentTextIcon/>} isActive={activeView==='reports'} onClick={()=> setActiveView('reports')} />
+              <NavButton label="AI 분석" icon={<SparklesIcon/>} onClick={handleAnalyze} isActive={analysisState.isOpen} />
+              <NavButton label="추가" icon={<PlusIconSmall/>} onClick={() => handleOpenModal()} isActive={isModalOpen} />
             </footer>
 
             {/* Original FAB for Desktop */}
@@ -678,6 +902,14 @@
                 transaction={editingTransaction}
               />
             )}
+            <AnalysisModal
+                isOpen={analysisState.isOpen}
+                isLoading={analysisState.isLoading}
+                content={analysisState.content}
+                error={analysisState.error}
+                onClose={() => setAnalysisState({ isOpen: false, isLoading: false, content: '', error: null })}
+                onSaveReport={handleSaveReport}
+            />
           </div>
         );
       };
