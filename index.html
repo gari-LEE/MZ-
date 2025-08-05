@@ -788,21 +788,20 @@
         };
 
         const handleAnalyze = async () => {
-          if (!process.env.API_KEY) {
-            setAnalysisState({ isOpen: true, isLoading: false, content: '', error: 'API 키가 설정되지 않았습니다.' });
-            return;
-          }
-          
-          const monthlyExpenses = getExpensesByMonth(currentMonth);
-
-          if (monthlyExpenses.length === 0) {
-            setAnalysisState({ isOpen: true, isLoading: false, content: '', error: '분석할 지출 내역이 없습니다. 먼저 거래를 추가해주세요.' });
-            return;
-          }
-
+          // Immediately set loading state to provide user feedback
           setAnalysisState({ isOpen: true, isLoading: true, content: '', error: null });
-
+        
           try {
+            if (!process.env.API_KEY) {
+              throw new Error('API 키가 설정되지 않았습니다.');
+            }
+            
+            const monthlyExpenses = getExpensesByMonth(currentMonth);
+        
+            if (monthlyExpenses.length === 0) {
+              throw new Error('분석할 지출 내역이 없습니다. 먼저 거래를 추가해주세요.');
+            }
+        
             const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
             
             const expenseDetails = monthlyExpenses.map(t => {
@@ -810,19 +809,20 @@
                 const subCategory = t.subCategoryId ? ` (${SUBCATEGORY_MAP.get(t.subCategoryId)?.name})` : '';
                 return `- 카테고리: ${category}${subCategory}, 금액: ${t.amount.toLocaleString()}원, 메모: ${t.memo || '없음'}`;
             }).join('\n');
-
+        
             const prompt = `당신은 "노랭이"라는 이름의 친절하고 현대적인 금융 코치입니다. 사용자는 젊은 세대이며, 비판적이지 않고 실용적인 조언을 원합니다. 다음은 이번 달 지출 내역입니다. 이 소비 패턴을 분석하고, 격려하는 말투와 이모티콘을 사용하여 2~3가지 구체적이고 실천 가능한 팁을 한국어로 제공해주세요. 분석 내용은 간결하고 이해하기 쉽게, 제목과 내용을 구분하여 마크다운 형식으로 작성해주세요.\n\n### 지출 요약\n\n### 개선 제안\n\n지출 내역:\n${expenseDetails}\n\n분석 리포트:`;
             
             const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash',
               contents: prompt,
             });
-
+        
             setAnalysisState({ isOpen: true, isLoading: false, content: response.text, error: null });
-
+        
           } catch (e) {
-            console.error(e);
-            setAnalysisState({ isOpen: true, isLoading: false, content: '', error: 'AI 분석 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' });
+            console.error("AI Analysis Error:", e);
+            const errorMessage = e.message || 'AI 분석 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+            setAnalysisState({ isOpen: true, isLoading: false, content: '', error: errorMessage });
           }
         };
         
