@@ -803,7 +803,7 @@
               throw new Error('분석할 지출 내역이 없습니다. 먼저 거래를 추가해주세요.');
             }
         
-            const ai = new GoogleGenAI({apiKey: AIzaSyDnU8dny7n6MXmsuJVGgPHI26y-oqgh8_Q });
+            const ai = new GoogleGenAI({apiKey: 'AIzaSyDnU8dny7n6MXmsuJVGgPHI26y-oqgh8_Q'});
             
             const expenseDetails = monthlyExpenses.map(t => {
                 const category = CATEGORY_MAP.get(t.categoryId)?.name || '기타';
