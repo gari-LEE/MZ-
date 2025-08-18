@@ -65,6 +65,19 @@
       import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@3.1.0';
       import { GoogleGenAI } from 'https://esm.sh/@google/genai';
 
+      const formatCompactNumber = (num) => {
+        if (num >= 10000) {
+            const value = num / 10000;
+            const truncatedValue = Math.floor(value * 10) / 10;
+            return `${truncatedValue}만`;
+        }
+        if (num >= 1000) {
+            const value = num / 1000;
+            const truncatedValue = Math.floor(value * 10) / 10;
+            return `${truncatedValue}천`;
+        }
+        return num.toLocaleString();
+      };
 
       // --- From types.ts ---
       const TransactionType = {
@@ -809,8 +822,8 @@
                                         {day.dayOfMonth}
                                     </span>
                                     {expense > 0 && day.isCurrentMonth && (
-                                        <div className="mt-1 text-xs md:text-sm font-mono text-sunset-orange truncate">
-                                            -{expense.toLocaleString()}
+                                        <div className="mt-1 text-xs md:text-sm font-mono text-sunset-orange break-words">
+                                            -{formatCompactNumber(expense)}
                                         </div>
                                     )}
                                 </div>
@@ -955,9 +968,9 @@
             // 이 파일이 인터넷에 공개되면 API 키가 노출되어 다른 사람이 악용할 수 있습니다.
             // 이는 매우 위험하며, 예상치 못한 요금이 청구될 수 있습니다.
             // 이 방법은 반드시 컴퓨터에서 개인적인 용도로만 사용하세요.
-            const YOUR_API_KEY = "여기에_발급받은_API_키를_붙여넣으세요"; // <-- ❗ 이 곳에 발급받은 API 키를 붙여넣으세요.
+            const YOUR_API_KEY = AIzaSyBkNSDZ8aVTDB2EJnlOQOi0typpGSIJBmQ; // <-- ❗ 이 곳에 발급받은 API 키를 붙여넣으세요.
         
-            if (!YOUR_API_KEY || YOUR_API_KEY === "여기에_발급받은_API_키를_붙여넣으세요") {
+            if (!YOUR_API_KEY || YOUR_API_KEY === AIzaSyBkNSDZ8aVTDB2EJnlOQOi0typpGSIJBmQ) {
               throw new Error("API 키가 코드에 입력되지 않았습니다. index.html 파일의 handleAnalyze 함수 안에 있는 YOUR_API_KEY 변수에 키를 넣어주세요.");
             }
             
