@@ -53,6 +53,11 @@
         height: 40px;
         animation: spin 1s linear infinite;
       }
+      /* Custom styles for date input */
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: invert(0.8) brightness(100%) sepia(100%) saturate(0%) hue-rotate(0deg);
+        cursor: pointer;
+      }
     </style>
     <!-- Babel for in-browser transpilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -65,19 +70,6 @@
       import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@3.1.0';
       import { GoogleGenAI } from 'https://esm.sh/@google/genai';
 
-      const formatCompactNumber = (num) => {
-        if (num >= 10000) {
-            const value = num / 10000;
-            const truncatedValue = Math.floor(value * 10) / 10;
-            return `${truncatedValue}만`;
-        }
-        if (num >= 1000) {
-            const value = num / 1000;
-            const truncatedValue = Math.floor(value * 10) / 10;
-            return `${truncatedValue}천`;
-        }
-        return num.toLocaleString();
-      };
 
       // --- From types.ts ---
       const TransactionType = {
@@ -166,11 +158,11 @@
       const useReports = () => {
         const [reports, setReports] = useLocalStorage('ai_reports', []);
 
-        const addReport = useCallback((reportContent, reportMonth) => {
+        const addReport = useCallback((reportContent, reportPeriod) => {
             const newReport = {
                 id: new Date().toISOString() + Math.random(),
                 date: new Date().toISOString().slice(0, 10),
-                month: reportMonth,
+                period: reportPeriod,
                 content: reportContent
             };
             setReports(prev => [newReport, ...prev]);
@@ -207,18 +199,26 @@
           return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         }, [transactions]);
 
-        const getFilteredTransactions = useCallback((month) => {
-          if (!month) return sortedTransactions;
-          return sortedTransactions.filter(t => t.date.startsWith(month));
+        const getFilteredTransactions = useCallback(({ startDate, endDate }) => {
+            if (!startDate || !endDate) return [];
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+
+            return sortedTransactions.filter(t => {
+                const transactionDate = new Date(t.date);
+                return transactionDate >= start && transactionDate <= end;
+            });
         }, [sortedTransactions]);
         
-        const getExpensesByMonth = useCallback((month) => {
-            return getFilteredTransactions(month).filter(t => t.type === TransactionType.EXPENSE);
+        const getExpensesByDateRange = useCallback(({ startDate, endDate }) => {
+            return getFilteredTransactions({ startDate, endDate }).filter(t => t.type === TransactionType.EXPENSE);
         }, [getFilteredTransactions]);
 
         const totals = useMemo(() => {
-          return (month) => {
-              const filtered = getFilteredTransactions(month);
+          return ({ startDate, endDate }) => {
+              const filtered = getFilteredTransactions({ startDate, endDate });
               return filtered.reduce((acc, t) => {
                   if (t.type === TransactionType.INCOME) {
                       acc.income += t.amount;
@@ -232,8 +232,8 @@
         }, [getFilteredTransactions]);
 
         const expenseByCategory = useMemo(() => {
-          return (month) => {
-            const filtered = getFilteredTransactions(month).filter(t => t.type === TransactionType.EXPENSE);
+          return ({ startDate, endDate }) => {
+            const filtered = getFilteredTransactions({ startDate, endDate }).filter(t => t.type === TransactionType.EXPENSE);
             const categoryTotals = {};
             for (const t of filtered) {
               if (!categoryTotals[t.categoryId]) {
@@ -260,9 +260,9 @@
 
 
         return { 
-          transactions: transactions,
+          transactions: transactions, // for export
           getFilteredTransactions,
-          getExpensesByMonth,
+          getExpensesByDateRange,
           addTransaction, 
           updateTransaction, 
           deleteTransaction, 
@@ -326,11 +326,6 @@
       const ChevronDownIcon = () => (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      );
-      const CalendarIcon = () => (
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
       );
 
@@ -403,7 +398,7 @@
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-slate-500">
-                  해당 월의 지출 내역이 없습니다.
+                  해당 기간의 지출 내역이 없습니다.
                 </div>
               )}
             </div>
@@ -457,7 +452,7 @@
       const TransactionList = ({ transactions, onEdit, onDelete }) => {
         return (
           <section>
-            <h2 className="text-xl font-bold mb-4 text-slate-200">최근 거래 내역</h2>
+            <h2 className="text-xl font-bold mb-4 text-slate-200">거래 내역</h2>
             <div className="space-y-3">
               {transactions.length > 0 ? (
                 transactions.map(t => (
@@ -673,7 +668,7 @@
             <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 transition-all duration-300">
                 <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
                     <div>
-                        <p className="font-bold text-slate-200">{report.month}월 지출 분석 리포트</p>
+                        <p className="font-bold text-slate-200">{report.period} 지출 분석 리포트</p>
                         <p className="text-xs text-slate-500 font-mono">생성일: {report.date}</p>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -719,171 +714,76 @@
         </section>
     );
     
-      const CalendarView = ({ transactions, currentMonth, onEdit, onDelete }) => {
-        const [selectedDate, setSelectedDate] = useState(null);
+    const DateRangePicker = ({ value, onChange }) => {
+        const handlePreset = (preset) => {
+            const today = new Date();
+            let start, end;
 
-        const dailyExpenses = useMemo(() => {
-            const expenseMap = new Map();
-            transactions
-                .filter(t => t.type === TransactionType.EXPENSE && t.date.startsWith(currentMonth))
-                .forEach(t => {
-                    const day = t.date;
-                    const currentTotal = expenseMap.get(day) || 0;
-                    expenseMap.set(day, currentTotal + t.amount);
-                });
-            return expenseMap;
-        }, [transactions, currentMonth]);
-        
-        const transactionsForSelectedDay = useMemo(() => {
-            if (!selectedDate) return [];
-            return transactions
-                .filter(t => t.date === selectedDate)
-                .sort((a,b) => (a.type === TransactionType.INCOME ? 1 : -1));
-        }, [transactions, selectedDate]);
-
-
-        const generateCalendarDays = (monthString) => {
-            const days = [];
-            const [year, month] = monthString.split('-').map(Number);
-            const firstDayOfMonth = new Date(year, month - 1, 1);
-            const lastDayOfMonth = new Date(year, month, 0);
-            const daysInMonth = lastDayOfMonth.getDate();
-            const startDayOfWeek = firstDayOfMonth.getDay();
-
-            const lastDayOfPrevMonth = new Date(year, month - 1, 0);
-            const daysInPrevMonth = lastDayOfPrevMonth.getDate();
-            for (let i = startDayOfWeek - 1; i >= 0; i--) {
-                const day = daysInPrevMonth - i;
-                const date = new Date(year, month - 2, day);
-                days.push({
-                    date: date.toISOString().slice(0, 10),
-                    dayOfMonth: day,
-                    isCurrentMonth: false
-                });
+            switch (preset) {
+                case 'thisMonth':
+                    start = new Date(today.getFullYear(), today.getMonth(), 1);
+                    end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    break;
+                case 'thisYear':
+                    start = new Date(today.getFullYear(), 0, 1);
+                    end = new Date(today.getFullYear(), 11, 31);
+                    break;
+                case 'lastMonth':
+                    start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                    end = new Date(today.getFullYear(), today.getMonth(), 0);
+                    break;
+                default:
+                    return;
             }
-
-            for (let i = 1; i <= daysInMonth; i++) {
-                const date = new Date(year, month - 1, i);
-                days.push({
-                    date: date.toISOString().slice(0, 10),
-                    dayOfMonth: i,
-                    isCurrentMonth: true
-                });
-            }
-
-            const totalDays = days.length;
-            const remainingDays = (7 - (totalDays % 7)) % 7;
-            for (let i = 1; i <= remainingDays; i++) {
-                const date = new Date(year, month, i);
-                 days.push({
-                    date: date.toISOString().slice(0, 10),
-                    dayOfMonth: i,
-                    isCurrentMonth: false
-                });
-            }
-            
-            return days;
+            onChange({
+                start: start.toISOString().slice(0, 10),
+                end: end.toISOString().slice(0, 10),
+            });
         };
-        
-        const calendarDays = useMemo(() => generateCalendarDays(currentMonth), [currentMonth]);
-        const today = new Date().toISOString().slice(0, 10);
 
         return (
-            <section>
-                <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 mb-8">
-                    <div className="grid grid-cols-7 text-center text-xs text-slate-400 font-bold pb-2 border-b border-slate-700">
-                        {['일', '월', '화', '수', '목', '금', '토'].map(day => <div key={day}>{day}</div>)}
-                    </div>
-                    <div className="grid grid-cols-7">
-                        {calendarDays.map((day, index) => {
-                            const expense = dailyExpenses.get(day.date);
-                            const isToday = day.date === today;
-                            const isSelected = day.date === selectedDate;
-
-                            let cellClasses = 'h-24 md:h-28 border-b border-r border-slate-700 p-1.5 text-left flex flex-col overflow-hidden transition-colors duration-200';
-                            if ((index + 1) % 7 === 0) cellClasses += ' border-r-0';
-                            if (index >= calendarDays.length - 7) cellClasses += ' border-b-0';
-                            
-                            if (!day.isCurrentMonth) {
-                                cellClasses += ' bg-slate-800/30';
-                            } else if (isSelected) {
-                                cellClasses += ' bg-neon-purple/20 border-2 border-neon-purple';
-                            } else if (expense) {
-                                cellClasses += ' bg-slate-700/50 hover:bg-slate-700';
-                            } else {
-                                 cellClasses += ' hover:bg-slate-700/50';
-                            }
-                            
-                            if(day.isCurrentMonth) cellClasses += ' cursor-pointer';
-
-                            return (
-                                <div key={day.date} className={cellClasses} onClick={() => day.isCurrentMonth && setSelectedDate(day.date)}>
-                                    <span className={`text-xs font-bold ${isToday ? 'bg-cyber-pink text-white rounded-full w-5 h-5 flex items-center justify-center' : ''} ${!day.isCurrentMonth ? 'text-slate-600' : 'text-slate-300'}`}>
-                                        {day.dayOfMonth}
-                                    </span>
-                                    {expense > 0 && day.isCurrentMonth && (
-                                        <div className="mt-1 text-xs md:text-sm font-mono text-sunset-orange break-words">
-                                            -{formatCompactNumber(expense)}
-                                        </div>
-                                    )}
-                                </div>
-                            )
-                        })}
-                    </div>
+            <div className="flex flex-col md:flex-row gap-2 items-center">
+                <div className="flex gap-2 w-full md:w-auto">
+                    <input
+                        type="date"
+                        value={value.start}
+                        onChange={(e) => onChange({ ...value, start: e.target.value })}
+                        className="bg-slate-800/80 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyber-pink w-full"
+                    />
+                    <span className="flex items-center text-slate-400">~</span>
+                    <input
+                        type="date"
+                        value={value.end}
+                        onChange={(e) => onChange({ ...value, end: e.target.value })}
+                        className="bg-slate-800/80 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyber-pink w-full"
+                    />
                 </div>
-
-                {selectedDate && (
-                    <section>
-                        <h2 className="text-xl font-bold mb-4 text-slate-200">{selectedDate} 거래 내역</h2>
-                        {transactionsForSelectedDay.length > 0 ? (
-                            <div className="space-y-3">
-                                {transactionsForSelectedDay.map(t => (
-                                    <TransactionItem key={`detail-${t.id}`} transaction={t} onEdit={onEdit} onDelete={onDelete} />
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-10 bg-slate-800/50 border border-dashed border-slate-700 rounded-lg">
-                                <p className="text-slate-500">선택한 날짜에 거래 내역이 없습니다.</p>
-                            </div>
-                        )}
-                    </section>
-                )}
-            </section>
+                <div className="flex gap-2">
+                    <button onClick={() => handlePreset('thisMonth')} className="px-3 py-2 text-xs bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600 rounded-md transition-colors">이번 달</button>
+                    <button onClick={() => handlePreset('lastMonth')} className="px-3 py-2 text-xs bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600 rounded-md transition-colors">지난 달</button>
+                    <button onClick={() => handlePreset('thisYear')} className="px-3 py-2 text-xs bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600 rounded-md transition-colors">올해</button>
+                </div>
+            </div>
         );
     };
-    
-      const DesktopNav = ({ activeView, setActiveView }) => {
-        const navItems = [
-            { id: 'dashboard', label: '대시보드', icon: <HomeIcon /> },
-            { id: 'calendar', label: '캘린더', icon: <CalendarIcon /> },
-            { id: 'reports', label: '리포트', icon: <DocumentTextIcon /> }
-        ];
 
-        return (
-            <nav className="hidden md:flex mb-6 bg-slate-800/50 border border-slate-700 rounded-lg p-1 space-x-1">
-                {navItems.map(item => (
-                    <button
-                        key={item.id}
-                        onClick={() => setActiveView(item.id)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md transition-all duration-300 ${activeView === item.id ? 'bg-slate-700 text-electric-blue shadow' : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'}`}
-                    >
-                        {React.cloneElement(item.icon, {className: "h-5 w-5"})}
-                        <span className="font-bold">{item.label}</span>
-                    </button>
-                ))}
-            </nav>
-        );
-    };
 
       // --- From App.tsx ---
       const App = () => {
-        const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
+        const getInitialDateRange = () => {
+          const today = new Date();
+          const start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+          const end = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+          return { start, end };
+        };
+
+        const [dateRange, setDateRange] = useState(getInitialDateRange);
         const [activeView, setActiveView] = useState('dashboard');
         
         const { 
           transactions, 
           getFilteredTransactions,
-          getExpensesByMonth,
+          getExpensesByDateRange,
           deleteTransaction,
           addTransaction,
           updateTransaction,
@@ -898,9 +798,9 @@
         const [editingTransaction, setEditingTransaction] = useState(null);
         const [analysisState, setAnalysisState] = useState({ isOpen: false, isLoading: false, content: '', error: null });
 
-        const filteredTransactions = useMemo(() => getFilteredTransactions(currentMonth), [getFilteredTransactions, currentMonth]);
-        const currentTotals = useMemo(() => totals(currentMonth), [totals, currentMonth]);
-        const currentExpenseByCategory = useMemo(() => expenseByCategory(currentMonth), [expenseByCategory, currentMonth]);
+        const filteredTransactions = useMemo(() => getFilteredTransactions(dateRange), [getFilteredTransactions, dateRange]);
+        const currentTotals = useMemo(() => totals(dateRange), [totals, dateRange]);
+        const currentExpenseByCategory = useMemo(() => expenseByCategory(dateRange), [expenseByCategory, dateRange]);
 
         const handleOpenModal = (transaction = null) => {
           setEditingTransaction(transaction);
@@ -923,7 +823,8 @@
         
         const handleSaveReport = () => {
             if (analysisState.content && !analysisState.error) {
-                addReport(analysisState.content, currentMonth);
+                const reportPeriod = `${dateRange.start} ~ ${dateRange.end}`;
+                addReport(analysisState.content, reportPeriod);
                 setAnalysisState({ isOpen: false, isLoading: false, content: '', error: null });
                 alert('리포트가 성공적으로 저장되었습니다!');
             }
@@ -964,23 +865,31 @@
           setAnalysisState({ isOpen: true, isLoading: true, content: '', error: null });
         
           try {
-            const apiKey = 'AIzaSyBkNSDZ8aVTDB2EJnlOQOi0typpGSIJBmQ';
-
-            const monthlyExpenses = getExpensesByMonth(currentMonth);
+            // --- 🚨 중요 보안 경고 🚨 ---
+            // 이 파일이 인터넷에 공개되면 API 키가 노출되어 다른 사람이 악용할 수 있습니다.
+            // 이는 매우 위험하며, 예상치 못한 요금이 청구될 수 있습니다.
+            // 이 방법은 반드시 컴퓨터에서 개인적인 용도로만 사용하세요.
+            const YOUR_API_KEY = "여기에_발급받은_API_키를_붙여넣으세요"; // <-- ❗ 이 곳에 발급받은 API 키를 붙여넣으세요.
+        
+            if (!YOUR_API_KEY || YOUR_API_KEY === "여기에_발급받은_API_키를_붙여넣으세요") {
+              throw new Error("API 키가 코드에 입력되지 않았습니다. index.html 파일의 handleAnalyze 함수 안에 있는 YOUR_API_KEY 변수에 키를 넣어주세요.");
+            }
+            
+            const monthlyExpenses = getExpensesByDateRange(dateRange);
         
             if (monthlyExpenses.length < 2) {
               throw new Error('분석할 지출 내역이 부족합니다. 최소 2개 이상의 거래를 추가해주세요.');
             }
         
-            const ai = new GoogleGenAI({apiKey: apiKey});
+            const ai = new GoogleGenAI({apiKey: YOUR_API_KEY});
             
             const expenseDetails = monthlyExpenses.map(t => {
                 const category = CATEGORY_MAP.get(t.categoryId)?.name || '기타';
                 const subCategory = t.subCategoryId ? ` (${SUBCATEGORY_MAP.get(t.subCategoryId)?.name})` : '';
-                return `- 카테고리: ${category}${subCategory}, 금액: ${t.amount.toLocaleString()}원, 메모: ${t.memo || '없음'}`;
+                return `- 카테고리: ${category}${subCategory}, 금액: ${t.amount.toLocaleString()}원, 날짜: ${t.date}, 메모: ${t.memo || '없음'}`;
             }).join('\n');
         
-            const prompt = `당신은 "노랭이"라는 이름의 친절하고 현대적인 금융 코치입니다. 사용자는 젊은 세대이며, 비판적이지 않고 실용적인 조언을 원합니다. 다음은 이번 달 지출 내역입니다. 이 소비 패턴을 분석하고, 격려하는 말투와 이모티콘을 사용하여 2~3가지 구체적이고 실천 가능한 팁을 한국어로 제공해주세요. 분석 내용은 간결하고 이해하기 쉽게, 제목과 내용을 구분하여 마크다운 형식으로 작성해주세요.\n\n### 지출 요약\n\n### 개선 제안\n\n지출 내역:\n${expenseDetails}\n\n분석 리포트:`;
+            const prompt = `당신은 "노랭이"라는 이름의 친절하고 현대적인 금융 코치입니다. 사용자는 젊은 세대이며, 비판적이지 않고 실용적인 조언을 원합니다. 다음은 ${dateRange.start}부터 ${dateRange.end}까지의 지출 내역입니다. 이 소비 패턴을 분석하고, 격려하는 말투와 이모티콘을 사용하여 2~3가지 구체적이고 실천 가능한 팁을 한국어로 제공해주세요. 분석 내용은 간결하고 이해하기 쉽게, 제목과 내용을 구분하여 마크다운 형식으로 작성해주세요.\n\n### 지출 요약\n\n### 개선 제안\n\n지출 내역:\n${expenseDetails}\n\n분석 리포트:`;
             
             const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash',
@@ -1008,31 +917,33 @@
           <div className="min-h-screen bg-slate-900 text-slate-200 font-sans">
             <div className="fixed top-0 left-0 w-full h-full bg-gradient-to-br from-neon-purple/30 via-cyber-pink/30 to-electric-blue/30 blur-3xl opacity-50 z-0"></div>
             <main className="relative z-10 container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl pb-24 md:pb-8">
-              <header className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyber-pink to-electric-blue">
-                  노랭이의 가계부
-                </h1>
-                <div className="flex items-center space-x-2">
-                  <input 
-                    type="month"
-                    value={currentMonth}
-                    onChange={(e) => setCurrentMonth(e.target.value)}
-                    className="bg-slate-800/80 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyber-pink"
-                  />
-                  <button onClick={handleAnalyze} className="inline-flex items-center justify-center p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md transition-colors" title="AI 지출 분석">
-                    <SparklesIcon />
-                  </button>
-                  <label htmlFor="import-button" className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md cursor-pointer transition-colors hidden md:inline-flex" title="가져오기">
-                    <UploadIcon />
-                    <input type="file" id="import-button" className="hidden" accept=".json" onChange={handleImport} />
-                  </label>
-                  <button onClick={handleExport} className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md hidden md:inline-flex transition-colors" title="내보내기">
-                    <DownloadIcon />
-                  </button>
+              <header className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <div className="flex justify-between items-center w-full md:w-auto">
+                    <h1 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyber-pink to-electric-blue">
+                      노랭이의 가계부
+                    </h1>
+                    <div className="md:hidden flex items-center space-x-2">
+                        <button onClick={handleAnalyze} className="inline-flex items-center justify-center p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md transition-colors" title="AI 지출 분석">
+                            <SparklesIcon />
+                        </button>
+                    </div>
+                </div>
+                <div className="flex flex-col md:flex-row items-center gap-2">
+                  <DateRangePicker value={dateRange} onChange={setDateRange} />
+                  <div className="hidden md:flex items-center space-x-2">
+                    <button onClick={handleAnalyze} className="inline-flex items-center justify-center p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md transition-colors" title="AI 지출 분석">
+                      <SparklesIcon />
+                    </button>
+                    <label htmlFor="import-button" className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md cursor-pointer transition-colors inline-flex" title="가져오기">
+                      <UploadIcon />
+                      <input type="file" id="import-button" className="hidden" accept=".json" onChange={handleImport} />
+                    </label>
+                    <button onClick={handleExport} className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-md inline-flex transition-colors" title="내보내기">
+                      <DownloadIcon />
+                    </button>
+                  </div>
                 </div>
               </header>
-
-              <DesktopNav activeView={activeView} setActiveView={setActiveView} />
 
               {activeView === 'dashboard' ? (
                 <>
@@ -1043,13 +954,6 @@
                         onDelete={deleteTransaction} 
                     />
                 </>
-              ) : activeView === 'calendar' ? (
-                <CalendarView
-                    transactions={filteredTransactions}
-                    currentMonth={currentMonth}
-                    onEdit={handleOpenModal}
-                    onDelete={deleteTransaction}
-                />
               ) : (
                 <ReportsView reports={reports} onDeleteReport={deleteReportFromList} />
               )}
@@ -1058,8 +962,8 @@
             {/* Bottom Navigation for Mobile */}
             <footer className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900/80 backdrop-blur-sm border-t border-slate-700 z-20 flex justify-around items-center">
               <NavButton label="대시보드" icon={<HomeIcon/>} isActive={activeView==='dashboard'} onClick={()=> setActiveView('dashboard')} />
-              <NavButton label="캘린더" icon={<CalendarIcon/>} isActive={activeView==='calendar'} onClick={()=> setActiveView('calendar')} />
               <NavButton label="리포트" icon={<DocumentTextIcon/>} isActive={activeView==='reports'} onClick={()=> setActiveView('reports')} />
+              <NavButton label="AI 분석" icon={<SparklesIcon/>} onClick={handleAnalyze} isActive={analysisState.isOpen} />
               <NavButton label="추가" icon={<PlusIconSmall/>} onClick={() => handleOpenModal()} isActive={isModalOpen} />
             </footer>
 
