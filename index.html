@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
   <head>
@@ -68,7 +69,7 @@
       import React, { useState, useMemo, useCallback, useEffect } from 'https://esm.sh/react@19.1.1';
       import ReactDOM from 'https://esm.sh/react-dom@19.1.1/client';
       import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@3.1.0';
-      import { GoogleGenAI } from 'https://esm.sh/@google/genai';
+      import { GoogleGenAI } from "https://esm.sh/@google/genai";
 
 
       // --- From types.ts ---
@@ -135,9 +136,20 @@
         const [storedValue, setStoredValue] = useState(() => {
           try {
             const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
+            if (item) return JSON.parse(item);
+
+            const backupItem = window.localStorage.getItem(`${key}_backup`);
+            if (backupItem) return JSON.parse(backupItem);
+
+            return initialValue;
           } catch (error) {
-            console.error(error);
+            console.error(`Error reading localStorage key “${key}”:`, error);
+            try {
+              const backupItem = window.localStorage.getItem(`${key}_backup`);
+              if (backupItem) return JSON.parse(backupItem);
+            } catch (backupError) {
+              console.error(`Error reading backup localStorage key “${key}_backup”:`, backupError);
+            }
             return initialValue;
           }
         });
@@ -145,10 +157,12 @@
         const setValue = (value) => {
           try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
+            const stringifiedValue = JSON.stringify(valueToStore);
             setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+            window.localStorage.setItem(key, stringifiedValue);
+            window.localStorage.setItem(`${key}_backup`, stringifiedValue); // Automatic backup
           } catch (error) {
-            console.error(error);
+            console.error(`Error setting localStorage key “${key}”:`, error);
           }
         };
 
@@ -250,9 +264,17 @@
 
         const importTransactions = (newTransactions) => {
           if (Array.isArray(newTransactions)) {
-              const validTransactions = newTransactions.filter(t => t.id && t.amount && t.date && t.type && t.categoryId);
-              setTransactions(validTransactions);
-              alert(`${validTransactions.length}개의 거래 내역을 가져왔습니다.`);
+              setTransactions(prev => {
+                  const existingIds = new Set(prev.map(t => t.id));
+                  const validNewTransactions = newTransactions.filter(t => t.id && t.amount && t.date && t.type && t.categoryId);
+                  const uniqueNew = validNewTransactions.filter(t => !existingIds.has(t.id));
+                  if(uniqueNew.length > 0) {
+                    alert(`${uniqueNew.length}개의 새로운 거래 내역을 가져왔습니다.`);
+                  } else {
+                    alert('새로운 거래 내역이 없습니다.');
+                  }
+                  return [...prev, ...uniqueNew];
+              });
           } else {
               alert('유효하지 않은 파일 형식입니다.');
           }
@@ -865,14 +887,8 @@
           setAnalysisState({ isOpen: true, isLoading: true, content: '', error: null });
         
           try {
-            // --- 🚨 중요 보안 경고 🚨 ---
-            // 이 파일이 인터넷에 공개되면 API 키가 노출되어 다른 사람이 악용할 수 있습니다.
-            // 이는 매우 위험하며, 예상치 못한 요금이 청구될 수 있습니다.
-            // 이 방법은 반드시 컴퓨터에서 개인적인 용도로만 사용하세요.
-            const YOUR_API_KEY = "여기에_발급받은_API_키를_붙여넣으세요"; // <-- ❗ 이 곳에 발급받은 API 키를 붙여넣으세요.
-        
-            if (!YOUR_API_KEY || YOUR_API_KEY === "여기에_발급받은_API_키를_붙여넣으세요") {
-              throw new Error("API 키가 코드에 입력되지 않았습니다. index.html 파일의 handleAnalyze 함수 안에 있는 YOUR_API_KEY 변수에 키를 넣어주세요.");
+            if (!process.env.API_KEY) {
+              throw new Error("API 키가 설정되지 않았습니다. 앱 설정에서 API_KEY 환경 변수를 추가해주세요.");
             }
             
             const monthlyExpenses = getExpensesByDateRange(dateRange);
@@ -881,7 +897,7 @@
               throw new Error('분석할 지출 내역이 부족합니다. 최소 2개 이상의 거래를 추가해주세요.');
             }
         
-            const ai = new GoogleGenAI({apiKey: YOUR_API_KEY});
+            const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
             
             const expenseDetails = monthlyExpenses.map(t => {
                 const category = CATEGORY_MAP.get(t.categoryId)?.name || '기타';
